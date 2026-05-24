@@ -1,0 +1,28 @@
+{
+  "name": "auto-goal-runner",
+  "version": "0.1.0",
+  "description": "Goal-driven Codex and Claude orchestration prototype.",
+  "type": "module",
+  "bin": {
+    "auto-goal-runner": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/cli.js",
+    "demo": "node dist/cli.js run --goal GOAL.md --mode simulate --max-iterations 2",
+    "test": "npm run build && node --test tests/*.test.mjs"
+  },
+  "keywords": [
+    "codex",
+    "claude",
+    "agents",
+    "automation",
+    "orchestration"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "typescript": "^5.9.3"
+  }
+}
+
