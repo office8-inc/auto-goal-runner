@@ -76,12 +76,20 @@ function printHelp(): void {
 
 Usage:
   auto-goal-runner run --goal GOAL.md --mode simulate --max-iterations 2
+  auto-goal-runner run --goal GOAL.md --mode external --max-iterations 1 --run-verification-commands
 
 Options:
   --goal <path>                    Path to GOAL.md. Defaults to GOAL.md.
-  --mode <simulate|external>        Agent adapter mode. Defaults to simulate.
+  --mode <simulate|external>        simulate uses deterministic local agents; external calls Claude CLI for plan/review. Defaults to simulate.
   --max-iterations <n>              Maximum loop iterations. Defaults to 2.
   --run-verification-commands       Execute commands from GOAL.md.
+
+External mode environment:
+  AUTO_GOAL_CLAUDE_MODEL            Claude model alias. Defaults to sonnet.
+  AUTO_GOAL_CLAUDE_EFFORT           Claude effort. Defaults to high.
+  AUTO_GOAL_CLAUDE_MAX_BUDGET_USD   Claude CLI budget cap. Defaults to 1.25.
+  AUTO_GOAL_CLAUDE_TIMEOUT_MS       Claude CLI timeout. Defaults to 180000.
+  AUTO_GOAL_CLAUDE_COMMAND          Optional Claude executable path.
 `);
 }
 

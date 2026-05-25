@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Auto Goal Runner">
+  <rect width="64" height="64" rx="12" fill="#111820"/>
+  <path d="M17 42 29 16h6l12 26h-7l-2-5H26l-2 5h-7Zm12-11h7l-3.5-8.5L29 31Z" fill="#f2b34a"/>
+  <path d="M47 18v8h-6v-3h-5v-5h11Zm-30 0h11v5h-5v3h-6v-8Zm30 28H36v-5h5v-3h6v8Zm-30 0v-8h6v3h5v5H17Z" fill="#1aa6b7"/>
+</svg>

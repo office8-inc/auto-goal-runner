@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Auto Goal Runner - Codex x Claude Loop</title>
+    <meta
+      name="description"
+      content="GOAL.mdからCodexとClaudeの自己改善ループを回すローカル自動化プロトタイプ。"
+    >
+    <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="loader" id="loader" aria-live="polite">
+      <span class="loader-mark">AG</span>
+      <span class="loader-text">initializing loop field</span>
+      <span class="loader-count" id="loader-count">00</span>
+    </div>
+
+    <div class="cursor-orb" id="cursor-orb" aria-hidden="true"></div>
+
+    <div class="visual-stage" aria-hidden="true">
+      <img class="hero-image" src="./assets/hero-ai-loop-abstract.png" alt="">
+      <canvas id="neural-canvas" class="neural-canvas"></canvas>
+      <div class="stage-noise"></div>
+      <div class="stage-vignette"></div>
+    </div>
+
+    <header class="site-header" aria-label="Primary">
+      <a class="brand magnetic" href="#top" aria-label="Auto Goal Runner home">
+        <span class="brand-mark" aria-hidden="true">AG</span>
+        <span>Auto Goal Runner</span>
+      </a>
+      <nav class="nav-links" aria-label="Site">
+        <a class="magnetic" href="#system">System</a>
+        <a class="magnetic" href="#patterns">Patterns</a>
+        <a class="magnetic" href="#gates">Gates</a>
+        <a class="magnetic" href="#runbook">Runbook</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero scene" data-scene="0" aria-labelledby="hero-title">
+        <div class="hero-copy-stack reveal">
+          <p class="eyebrow">external claude creative gate</p>
+          <h1 id="hero-title">
+            GOAL.md turns into a live agent arena.
+          </h1>
+          <p class="hero-copy">
+            Codexが実装し、Claudeが容赦なく批評し、評価器が止める。
+            ただの自動生成ではなく、証拠と修復を持った制作システム。
+          </p>
+          <div class="hero-actions">
+            <a class="button primary magnetic" href="#system">Enter System</a>
+            <a class="button secondary magnetic" href="#patterns">Change Mode</a>
+          </div>
+        </div>
+
+        <aside class="telemetry-panel reveal" aria-label="Run telemetry" data-tilt>
+          <div class="telemetry-header">
+            <span class="live-dot"></span>
+            <span>runtime telemetry</span>
+          </div>
+          <dl>
+            <div>
+              <dt>Loop</dt>
+              <dd id="telemetry-loop">Visual QA</dd>
+            </div>
+            <div>
+              <dt>Iteration</dt>
+              <dd><span id="telemetry-iteration">01</span> / 06</dd>
+            </div>
+            <div>
+              <dt>Packets</dt>
+              <dd id="telemetry-packets">048</dd>
+            </div>
+            <div>
+              <dt>Gate</dt>
+              <dd id="telemetry-gate">PASS</dd>
+            </div>
+          </dl>
+        </aside>
+
+        <div class="holo-stack reveal" aria-label="Agent topology">
+          <span>CODEX</span>
+          <span>EVALUATOR</span>
+          <span>CLAUDE</span>
+          <span>REPAIR</span>
+        </div>
+      </section>
+
+      <section class="system-strip scene" id="system" data-scene="1" aria-label="System loop">
+        <ol class="loop-rail" id="loop-rail">
+          <li class="active" data-step="0"><span>01</span>Goal</li>
+          <li data-step="1"><span>02</span>Spec</li>
+          <li data-step="2"><span>03</span>Build</li>
+          <li data-step="3"><span>04</span>Evaluate</li>
+          <li data-step="4"><span>05</span>Review</li>
+          <li data-step="5"><span>06</span>Repair</li>
+        </ol>
+      </section>
+
+      <section class="section scene" id="patterns" data-scene="2" aria-labelledby="patterns-title">
+        <div class="section-heading reveal">
+          <p class="eyebrow">mode matrix</p>
+          <h2 id="patterns-title">この要件では Visual QA ループが主役</h2>
+        </div>
+
+        <div class="pattern-console">
+          <div class="pattern-selector reveal" aria-label="Loop pattern selector">
+            <button class="pattern-button" type="button" data-pattern="reviewer">
+              <span>Builder Reviewer</span>
+              <small>fast</small>
+            </button>
+            <button class="pattern-button" type="button" data-pattern="test-first">
+              <span>Test First</span>
+              <small>strict</small>
+            </button>
+            <button class="pattern-button active" type="button" data-pattern="visual">
+              <span>Visual QA</span>
+              <small>selected</small>
+            </button>
+            <button class="pattern-button" type="button" data-pattern="tournament">
+              <span>Tournament</span>
+              <small>flashy</small>
+            </button>
+          </div>
+
+          <article class="pattern-detail reveal" aria-live="polite" data-tilt>
+            <p class="pattern-kicker" id="pattern-kicker">Browser evidence loop</p>
+            <h3 id="pattern-name">Codex UI -> Playwright capture -> Claude creative review</h3>
+            <p id="pattern-summary">
+              今回の要件に合わせたモード。見た目、動き、Canvas、レスポンシブを証拠化し、Claudeを厳しめのクリエイティブディレクターとして回す。
+            </p>
+            <dl class="pattern-metrics">
+              <div>
+                <dt>Impact</dt>
+                <dd id="metric-speed">High</dd>
+              </div>
+              <div>
+                <dt>Cost</dt>
+                <dd id="metric-cost">Medium</dd>
+              </div>
+              <div>
+                <dt>Fit</dt>
+                <dd id="metric-risk">Best</dd>
+              </div>
+            </dl>
+          </article>
+        </div>
+      </section>
+
+      <section class="section gate-section scene" id="gates" data-scene="3" aria-labelledby="gates-title">
+        <div class="section-heading reveal">
+          <p class="eyebrow">evaluator gates</p>
+          <h2 id="gates-title">派手さは、検証できる演出にする</h2>
+        </div>
+
+        <div class="gate-grid">
+          <article class="gate-card command reveal" data-tilt>
+            <span class="gate-index">A</span>
+            <h3>Command Gate</h3>
+            <p>build、test、site:checkを通す。演出が壊れても見逃さない。</p>
+          </article>
+          <article class="gate-card browser reveal" data-tilt>
+            <span class="gate-index">B</span>
+            <h3>Browser Gate</h3>
+            <p>Playwrightでdesktop/mobile、console、WebGL、Canvasサイズを確認する。</p>
+          </article>
+          <article class="gate-card policy reveal" data-tilt>
+            <span class="gate-index">C</span>
+            <h3>Creative Gate</h3>
+            <p>Claudeを“通す人”ではなく、落とす前提の批評役として使う。</p>
+          </article>
+        </div>
+
+        <div class="criteria-terminal reveal" aria-label="Acceptance criteria status">
+          <div class="criteria-row"><span class="status pass">PASS</span><code>first viewport explains GOAL.md driven Codex / Claude loop</code></div>
+          <div class="criteria-row"><span class="status pass">PASS</span><code>hero-ai-loop-abstract.png is present and visible</code></div>
+          <div class="criteria-row"><span class="status pass">PASS</span><code>persistent Three.js canvas renders on desktop and mobile</code></div>
+          <div class="criteria-row"><span class="status pass">PASS</span><code>node-pulse ShaderMaterial, bloom, packet curves, four-node topology</code></div>
+          <div class="criteria-row"><span class="status pass">PASS</span><code>loop pattern controls and telemetry interface are interactive</code></div>
+          <div class="criteria-row"><span class="status pass">PASS</span><code>award-site references: immersive WebGL, editorial type, dense system UI</code></div>
+          <div class="criteria-row"><span class="status pass">PASS</span><code>reveals, magnetic hover, active step rail, no white SaaS section</code></div>
+          <div class="criteria-row"><span class="status pending">PENDING</span><code>external Claude creative review has no blocking findings</code></div>
+          <div class="criteria-row"><span class="status pass">PASS</span><code>run directory contains Claude prompt, response, and screenshot artifacts</code></div>
+          <div class="criteria-row"><span class="status pass">PASS</span><code>responsive layout avoids text overlap at 1440px and 390px</code></div>
+          <div class="criteria-row"><span class="status pass">PASS</span><code>static local server path works without external CDNs</code></div>
+        </div>
+      </section>
+
+      <section class="section terminal-band scene" id="runbook" data-scene="4" aria-labelledby="runbook-title">
+        <div class="runbook-copy reveal">
+          <p class="eyebrow">local runbook</p>
+          <h2 id="runbook-title">GOAL.mdから、制作ループを実行する</h2>
+        </div>
+        <pre class="reveal"><code>npm run start -- run --goal examples/ai-loop-site/GOAL.md --mode external --max-iterations 1 --run-verification-commands</code></pre>
+      </section>
+    </main>
+
+    <script type="module" src="./dist/site-bundle.js"></script>
+  </body>
+</html>

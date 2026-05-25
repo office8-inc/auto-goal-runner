@@ -4,7 +4,8 @@ import type { EvaluationResult } from "../types.js";
 export async function evaluateCommands(
   commands: string[],
   cwd: string,
-  enabled: boolean
+  enabled: boolean,
+  runDir?: string
 ): Promise<EvaluationResult[]> {
   if (!enabled) {
     return commands.map((command) => ({
@@ -17,14 +18,19 @@ export async function evaluateCommands(
 
   const results: EvaluationResult[] = [];
   for (const command of commands) {
-    results.push(await runCommand(command, cwd));
+    results.push(await runCommand(command, cwd, runDir));
   }
   return results;
 }
 
-function runCommand(command: string, cwd: string): Promise<EvaluationResult> {
+function runCommand(command: string, cwd: string, runDir?: string): Promise<EvaluationResult> {
   return new Promise((resolve) => {
-    const child = spawn(command, { cwd, shell: true });
+    const env = { ...process.env };
+    if (runDir && /\bsite:check\b/.test(command)) {
+      env.SITE_CHECK_OUTPUT_DIR = `${runDir}/site-check`;
+    }
+
+    const child = spawn(command, { cwd, shell: true, env });
     const chunks: string[] = [];
 
     child.stdout.on("data", (data: Buffer) => chunks.push(data.toString()));
@@ -39,4 +45,3 @@ function runCommand(command: string, cwd: string): Promise<EvaluationResult> {
     });
   });
 }
-

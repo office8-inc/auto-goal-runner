@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseGoalFile } from "./goal-parser.js";
 import { SimulatedAgentAdapter } from "./adapters/simulated-agent-adapter.js";
+import { ExternalAgentAdapter } from "./adapters/external-agent-adapter.js";
 import type { AgentAdapter, AgentContext } from "./adapters/agent-adapter.js";
 import { evaluateArtifacts } from "./evaluators/artifact-evaluator.js";
 import { evaluateCommands } from "./evaluators/command-evaluator.js";
@@ -51,7 +52,7 @@ export async function runGoal(options: RunOptions): Promise<RunResult> {
     const builder = await adapter.build(goal, plan, context);
     const evaluations = [
       ...(await evaluateArtifacts(goal, plan, builder)),
-      ...(await evaluateCommands(goal.verificationCommands, options.cwd, options.runVerificationCommands))
+      ...(await evaluateCommands(goal.verificationCommands, options.cwd, options.runVerificationCommands, runDir))
     ];
     const review = await adapter.review(goal, plan, builder, evaluations, context);
     const iteration: IterationResult = { index, builder, evaluations, review };
@@ -77,6 +78,16 @@ export async function runGoal(options: RunOptions): Promise<RunResult> {
     }
   }
 
+  if (status === "stopped") {
+    const latest = iterations.at(-1);
+    const hasFailedEvaluation = latest?.evaluations.some((result) => result.status === "fail") ?? false;
+    const hasBlockingFinding = latest?.review.findings.some((finding) => finding.severity === "blocking") ?? false;
+    if (hasFailedEvaluation || hasBlockingFinding) {
+      status = "failed";
+      stopReason = "Maximum iterations reached with failing evaluators or blocking review findings.";
+    }
+  }
+
   const result: RunResult = {
     runId,
     runDir,
@@ -99,7 +110,7 @@ function createAdapter(mode: AgentMode): AgentAdapter {
     return new SimulatedAgentAdapter();
   }
 
-  throw new Error("External mode is not implemented yet. Use --mode simulate for the MVP.");
+  return new ExternalAgentAdapter();
 }
 
 function createRunId(): string {
@@ -170,4 +181,3 @@ function hasRepeatedFailure(iterations: IterationResult[]): boolean {
     iterations.at(-2)?.evaluations.filter((result) => result.status === "fail").map((result) => result.name) ?? [];
   return latest.some((name) => previous.includes(name));
 }
-

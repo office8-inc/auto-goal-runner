@@ -10,6 +10,9 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/cli.js",
     "demo": "node dist/cli.js run --goal GOAL.md --mode simulate --max-iterations 2",
+    "site:bundle": "esbuild examples/ai-loop-site/script.js --bundle --format=esm --target=es2022 --outfile=examples/ai-loop-site/dist/site-bundle.js",
+    "site:serve": "npm run site:bundle && node scripts/static-server.mjs",
+    "site:check": "npm run site:bundle && node scripts/site-check.mjs",
     "test": "npm run build && node --test tests/*.test.mjs"
   },
   "keywords": [
@@ -22,7 +25,13 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^25.0.0",
+    "esbuild": "^0.28.0",
+    "playwright": "^1.60.0",
+    "pngjs": "^7.0.0",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@fontsource-variable/syne": "^5.2.7",
+    "three": "^0.184.0"
   }
 }
-
