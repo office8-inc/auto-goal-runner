@@ -47,13 +47,23 @@ export function captureWorkspaceSnapshot(
 ): WorkspaceSnapshot {
   const entries = new Map<string, { mtimeMs: number; size: number }>();
   const unreadableDirs: string[] = [];
-  // 除外リスト側は resolve 形と realpath 形の両方を登録する。walk 中のエントリ側は
-  // ファイルシステムへ触れない resolve のみで比較する（realpath は symlink 先へ
-  // アクセスするため、lstat で判定する前に外部ターゲットを踏んでしまう）。
+  // 除外リスト側は resolve 形・realpath 形に加え、workspace ルートがエイリアス
+  // （symlink/junction）経由の場合に備えて「エイリアス空間へ写像した形」も登録する。
+  // walk 中のエントリ側はファイルシステムへ触れない resolve のみで比較する
+  // （realpath は symlink 先へアクセスするため、lstat で判定する前に外部ターゲットを
+  // 踏んでしまう）。
   const excluded = new Set<string>();
+  const rootAlias = normalizeCase(resolve(workspaceRoot));
+  const rootCanonical = canonicalizeForCompare(workspaceRoot);
   for (const path of excludePaths) {
     excluded.add(normalizeCase(resolve(path)));
-    excluded.add(canonicalizeForCompare(path));
+    const canonical = canonicalizeForCompare(path);
+    excluded.add(canonical);
+    if (canonical === rootCanonical) {
+      excluded.add(rootAlias);
+    } else if (canonical.startsWith(rootCanonical + sep)) {
+      excluded.add(rootAlias + canonical.slice(rootCanonical.length));
+    }
   }
   let truncated = false;
 

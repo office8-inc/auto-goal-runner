@@ -79,9 +79,11 @@ export function checkCommandPolicy(command: string, goal: Goal): PolicyCheck {
 
   // "npm run deploy" や "node publish.js" のような外向きアクション名のスクリプトが
   // 汎用 allow ルールを通過しないよう、名前ベースで承認を要求する。
-  // 既知の安全なビルドフラグ（cargo の --release）だけを照合対象から除く。
-  // フラグを一律に除くと "node verify.js --publish" まで免除してしまう。
-  const withoutSafeFlags = trimmed.replace(/(^|\s)--release\b/g, " ");
+  // 免除は cargo 呼び出しの --release フラグのみ（cargo のビルドモードであって
+  // 外向きアクションではない）。他のコマンドの --release/--publish 等は gate する。
+  const withoutSafeFlags = /^cargo\s/.test(trimmed)
+    ? trimmed.replace(/(^|\s)--release\b/g, " ")
+    : trimmed;
   if (OUTWARD_ACTION_NAMES.test(withoutSafeFlags)) {
     return { command, decision: "requiresApproval", rule: "default-deny:outward-action-name" };
   }

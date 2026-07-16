@@ -121,3 +121,11 @@ test("outward-action flags are still gated; only --release is exempt", () => {
   }
   assert.equal(checkCommandPolicy("cargo build --release", baseGoal).decision, "allow");
 });
+
+test("--release is only exempt for cargo invocations", () => {
+  assert.equal(checkCommandPolicy("cargo build --release", baseGoal).decision, "allow");
+  for (const command of ["node verify.js --release", "npm run build -- --release"]) {
+    const check = checkCommandPolicy(command, baseGoal);
+    assert.notEqual(check.decision, "allow", `${command} must not be allowed (${check.rule})`);
+  }
+});
