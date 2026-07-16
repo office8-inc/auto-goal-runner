@@ -11,7 +11,7 @@ The intended workflow is:
 5. Run deterministic evaluators.
 6. Repeat until acceptance criteria pass or a stop condition is reached.
 
-The current MVP ships with a safe `simulate` mode. It does not call Codex or Claude APIs by default. The code is structured so real adapters can later call `codex exec --json`, Claude Agent SDK, `claude -p --output-format json`, Playwright MCP, and other tools.
+The default `simulate` mode is a safe deterministic demo that calls no external APIs. The `external` mode runs the real loop: Claude CLI (`claude -p --output-format json`) plans and reviews, Codex CLI (`codex exec --json --output-schema`) builds and repairs, and deterministic evaluators gate every iteration.
 
 ## Quick Start
 
@@ -63,8 +63,33 @@ GOAL.md
 ## Modes
 
 - `simulate`: deterministic local demo mode. No external agent calls.
-- `external`: reserved for real Codex/Claude adapters. This is intentionally not the default.
+- `external`: the real loop. Claude CLI plans and reviews, Codex CLI builds and repairs. Requires both CLIs installed and authenticated. This is intentionally not the default.
+
+```bash
+npm run start -- run --goal GOAL.md --mode external --max-iterations 2 --run-verification-commands
+```
+
+### External mode environment
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `AUTO_GOAL_CLAUDE_COMMAND` | auto-detected | Claude executable path |
+| `AUTO_GOAL_CLAUDE_MODEL` | `sonnet` | Claude model alias |
+| `AUTO_GOAL_CLAUDE_EFFORT` | `high` | Claude effort level |
+| `AUTO_GOAL_CLAUDE_MAX_BUDGET_USD` | `2.50` | Budget cap per Claude call |
+| `AUTO_GOAL_CLAUDE_TIMEOUT_MS` | `180000` | Timeout per Claude call |
+| `AUTO_GOAL_CODEX_COMMAND` | auto-detected | Codex executable path |
+| `AUTO_GOAL_CODEX_MODEL` | Codex config default | Codex model override |
+| `AUTO_GOAL_CODEX_SANDBOX` | `workspace-write` | `workspace-write` \| `danger-full-access` \| `bypass` |
+| `AUTO_GOAL_CODEX_TIMEOUT_MS` | `1200000` | Timeout per Codex build pass |
+| `AUTO_GOAL_COMMAND_TIMEOUT_MS` | `600000` | Timeout per verification command |
+
+Sandbox note: on Windows the Codex CLI sandbox denies workspace writes without UAC elevation, so unattended Windows runs need the explicit `bypass` opt-in (`--codex-sandbox bypass` or `AUTO_GOAL_CODEX_SANDBOX=bypass`). The effective sandbox is always recorded in the run artifacts. See `docs/architecture.md` for what `bypass` does and does not protect.
+
+### Workspace
+
+The builder edits one resolved workspace directory: `--workspace <dir>` > `## Workspace` in `GOAL.md` > the goal file's directory. All evaluators, diffs, and reviews use the same directory.
 
 ## Current Scope
 
-This project is not a promise of full autonomy. It is a controlled automation framework. "Anything" should be added through deliverable-specific templates, evaluators, and policy rules.
+This project is not a promise of full autonomy. It is a controlled automation framework. "Anything" should be added through deliverable-specific templates, evaluators, and policy rules. Verification commands pass through a default-deny policy gate before execution (`docs/architecture.md`, Policy Engine).

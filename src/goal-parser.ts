@@ -1,16 +1,6 @@
 import { readFile } from "node:fs/promises";
 import type { Goal } from "./types.js";
 
-const SECTION_ALIASES: Record<string, keyof Omit<Goal, "rawSections">> = {
-  objective: "objective",
-  "deliverable type": "deliverableType",
-  "target user": "targetUser",
-  "acceptance criteria": "acceptanceCriteria",
-  constraints: "constraints",
-  "verification commands": "verificationCommands",
-  "stop conditions": "stopConditions"
-};
-
 export async function parseGoalFile(path: string): Promise<Goal> {
   const markdown = await readFile(path, "utf8");
   return parseGoalMarkdown(markdown);
@@ -31,10 +21,14 @@ export function parseGoalMarkdown(markdown: string): Goal {
     objective,
     deliverableType,
     targetUser: firstParagraph(get("target user")) || undefined,
+    workspace: firstParagraph(get("workspace")) || undefined,
     acceptanceCriteria: parseList(get("acceptance criteria")),
     constraints: parseList(get("constraints")),
     verificationCommands: parseList(get("verification commands")),
     stopConditions: parseList(get("stop conditions")),
+    manualApprovalCategories: parseList(get("manual approval required for")).map((item) =>
+      item.toLowerCase()
+    ),
     rawSections
   };
 }
@@ -69,8 +63,7 @@ function splitSections(markdown: string): Record<string, string> {
 }
 
 function normalizeHeading(heading: string): string {
-  const normalized = heading.trim().toLowerCase();
-  return SECTION_ALIASES[normalized] ? normalized : normalized;
+  return heading.trim().toLowerCase();
 }
 
 function firstParagraph(value: string): string {

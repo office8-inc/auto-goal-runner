@@ -37,3 +37,27 @@ test("parseGoalMarkdown rejects missing objective", () => {
   assert.throws(() => parseGoalMarkdown("# Goal\n\n## Deliverable Type\ncustom"), /Objective/);
 });
 
+test("parseGoalMarkdown extracts workspace and manual approval sections", () => {
+  const goal = parseGoalMarkdown(`# Goal
+
+## Objective
+Build a tool.
+
+## Workspace
+./site
+
+## Manual Approval Required For
+- Publish
+- network-write
+`);
+
+  assert.equal(goal.workspace, "./site");
+  assert.deepEqual(goal.manualApprovalCategories, ["publish", "network-write"]);
+});
+
+test("parseGoalMarkdown leaves workspace undefined when absent", () => {
+  const goal = parseGoalMarkdown("# Goal\n\n## Objective\nBuild a tool.\n");
+  assert.equal(goal.workspace, undefined);
+  assert.deepEqual(goal.manualApprovalCategories, []);
+});
+

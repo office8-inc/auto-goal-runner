@@ -1,8 +1,9 @@
-import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { closeSync, existsSync, openSync, readSync, readdirSync, statSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { AgentAdapter, AgentContext } from "./agent-adapter.js";
+import { runProcess } from "./process-utils.js";
+import { runCodexBuild } from "./codex-exec.js";
 import type {
   BuilderResult,
   EvaluationResult,
@@ -49,10 +50,20 @@ const REVIEW_SCHEMA = {
 type ClaudePrintResult = {
   result?: unknown;
   structured_output?: unknown;
-  cost_usd?: number;
-  total_cost_usd?: number;
-  duration_ms?: number;
+  is_error?: boolean;
+  errors?: unknown[];
 };
+
+/** Raw review finding as returned by Claude, before an ID is assigned. */
+type RawReviewFinding = Omit<ReviewFinding, "id">;
+
+const TEXT_EXTENSIONS = new Set([
+  ".html", ".css", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx",
+  ".json", ".md", ".txt", ".svg", ".yml", ".yaml", ".toml", ".xml"
+]);
+const SECRET_NAME_PATTERN = /\.env|secret|credential|token|id_rsa|\.pem$|\.key$/i;
+const EXCERPT_BYTES_PER_FILE = 6000;
+const EXCERPT_TOTAL_BYTES = 48000;
 
 export class ExternalAgentAdapter implements AgentAdapter {
   async plan(goal: Goal, context: AgentContext): Promise<PlanResult> {
@@ -68,41 +79,8 @@ export class ExternalAgentAdapter implements AgentAdapter {
     return response;
   }
 
-  async build(goal: Goal, _plan: PlanResult, context: AgentContext): Promise<BuilderResult> {
-    const reportPath = join(context.runDir, `codex-build-handoff-${context.iteration}.md`);
-    const workspaceArtifacts = collectWorkspaceArtifacts();
-    await writeFile(
-      reportPath,
-      [
-        `# Codex Build Handoff ${context.iteration}`,
-        "",
-        "External mode does not call the Codex executable from inside this runner yet.",
-        "The current Codex session or user edits the workspace, then this runner records the evaluation and Claude review gate.",
-        "",
-        "## Objective",
-        "",
-        goal.objective,
-        "",
-        "## Evidence",
-        "",
-        "- Claude CLI planning and review artifacts are written in this run directory.",
-        "- Deterministic verification commands run before the Claude review result is accepted.",
-        "",
-        "## Workspace Artifacts",
-        "",
-        ...workspaceArtifacts.map((file) => `- ${file}`)
-      ].join("\n"),
-      "utf8"
-    );
-
-    return {
-      summary: "External Codex build handoff recorded. Workspace edits are performed by the active Codex session.",
-      files: [reportPath, ...workspaceArtifacts],
-      notes: [
-        "This is an honest handoff, not a simulated build.",
-        "A future Codex CLI adapter should replace this handoff once the executable is callable from the runner."
-      ]
-    };
+  async build(goal: Goal, plan: PlanResult, context: AgentContext): Promise<BuilderResult> {
+    return runCodexBuild(goal, plan, context);
   }
 
   async review(
@@ -112,12 +90,12 @@ export class ExternalAgentAdapter implements AgentAdapter {
     evaluations: EvaluationResult[],
     context: AgentContext
   ): Promise<ReviewResult> {
-    const response = await runClaudeJson<ReviewResult>(
+    const response = await runClaudeJson<{ summary: string; findings: RawReviewFinding[] }>(
       "review",
       context,
       renderReviewPrompt(goal, plan, builder, evaluations, context),
       REVIEW_SCHEMA,
-      { tools: ["Read", "LS"] }
+      { tools: ["Read", "Glob"] }
     );
 
     if (!Array.isArray(response.findings)) {
@@ -126,7 +104,9 @@ export class ExternalAgentAdapter implements AgentAdapter {
 
     return {
       summary: response.summary,
-      findings: response.findings.map(normalizeFinding)
+      findings: response.findings.map((finding, index) =>
+        normalizeFinding(finding, `f${context.iteration}-${index + 1}`)
+      )
     };
   }
 }
@@ -156,104 +136,44 @@ async function runClaudeJson<T>(
     "json",
     "--json-schema",
     JSON.stringify(schema),
-    "--no-session-persistence"
+    "--no-session-persistence",
+    "--tools",
+    options.tools.join(","),
+    "--max-budget-usd",
+    process.env.AUTO_GOAL_CLAUDE_MAX_BUDGET_USD ?? "2.50"
   ];
 
-  claudeArgs.push("--tools", options.tools.join(","));
+  const { command, args } = createClaudeCommand(claudeArgs);
 
-  const maxBudgetUsd = process.env.AUTO_GOAL_CLAUDE_MAX_BUDGET_USD ?? "1.25";
-  if (maxBudgetUsd) {
-    claudeArgs.push("--max-budget-usd", maxBudgetUsd);
-  }
-
-  let stdout = "";
-  let stderr = "";
-
+  let result;
   try {
-    const { command, args } = createClaudeCommand(claudeArgs);
-    const result = await runProcess(command, args, prompt, {
-      cwd: process.cwd(),
-      timeout: Number(process.env.AUTO_GOAL_CLAUDE_TIMEOUT_MS ?? "180000")
+    result = await runProcess(command, args, {
+      cwd: context.workspaceRoot,
+      timeoutMs: Number(process.env.AUTO_GOAL_CLAUDE_TIMEOUT_MS ?? "180000"),
+      input: prompt
     });
-    stdout = result.stdout;
-    stderr = result.stderr;
   } catch (error) {
-    const failed = error as Error & { stdout?: string; stderr?: string };
-    stdout = failed.stdout ?? "";
-    stderr = failed.stderr ?? failed.message;
-    await writeFile(stdoutPath, stdout, "utf8");
-    await writeFile(stderrPath, stderr, "utf8");
-    throw new Error(`Claude ${stage} call failed. See ${stdoutPath} and ${stderrPath}. ${failed.message}`);
+    throw new Error(
+      `Claude CLI could not be started (${command}): ${(error as Error).message}. ` +
+        "Set AUTO_GOAL_CLAUDE_COMMAND to the claude executable path."
+    );
   }
 
-  await writeFile(stdoutPath, stdout, "utf8");
-  await writeFile(stderrPath, stderr, "utf8");
+  await writeFile(stdoutPath, result.stdout, "utf8");
+  await writeFile(stderrPath, result.stderr, "utf8");
 
-  const parsed = parseClaudeJson(stdout);
+  if (result.timedOut) {
+    throw new Error(`Claude ${stage} call timed out. See ${stdoutPath} and ${stderrPath}.`);
+  }
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `Claude ${stage} call failed with exit code ${result.exitCode}. See ${stdoutPath} and ${stderrPath}.`
+    );
+  }
+
+  const parsed = parseClaudeJson(result.stdout, stage);
   await writeFile(parsedPath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
   return parsed as T;
-}
-
-function runProcess(
-  command: string,
-  args: string[],
-  input: string,
-  options: { cwd: string; timeout: number }
-): Promise<{ stdout: string; stderr: string }> {
-  return new Promise((resolveProcess, rejectProcess) => {
-    const child = spawn(command, args, {
-      cwd: options.cwd,
-      shell: false,
-      stdio: ["pipe", "pipe", "pipe"]
-    });
-
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
-    let settled = false;
-
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      child.kill("SIGTERM");
-      const error = new Error(`Claude process timed out after ${options.timeout}ms`) as Error & {
-        stdout?: string;
-        stderr?: string;
-      };
-      error.stdout = Buffer.concat(stdoutChunks).toString("utf8");
-      error.stderr = Buffer.concat(stderrChunks).toString("utf8");
-      rejectProcess(error);
-    }, options.timeout);
-
-    child.stdout.on("data", (data: Buffer) => stdoutChunks.push(data));
-    child.stderr.on("data", (data: Buffer) => stderrChunks.push(data));
-    child.on("error", (error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      rejectProcess(error);
-    });
-    child.on("close", (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      const stdout = Buffer.concat(stdoutChunks).toString("utf8");
-      const stderr = Buffer.concat(stderrChunks).toString("utf8");
-      if (code === 0) {
-        resolveProcess({ stdout, stderr });
-        return;
-      }
-
-      const error = new Error(`Claude process exited with code ${code}`) as Error & {
-        stdout?: string;
-        stderr?: string;
-      };
-      error.stdout = stdout;
-      error.stderr = stderr;
-      rejectProcess(error);
-    });
-
-    child.stdin.end(input);
-  });
 }
 
 function createClaudeCommand(claudeArgs: string[]): { command: string; args: string[] } {
@@ -280,12 +200,17 @@ function createClaudeCommand(claudeArgs: string[]): { command: string; args: str
   return { command: "claude", args: claudeArgs };
 }
 
-function parseClaudeJson(stdout: string): unknown {
+function parseClaudeJson(stdout: string, stage: string): unknown {
   let printResult: ClaudePrintResult;
   try {
     printResult = JSON.parse(stdout) as ClaudePrintResult;
   } catch {
     throw new Error("Claude CLI returned non-JSON output.");
+  }
+
+  if (printResult.is_error) {
+    const details = Array.isArray(printResult.errors) ? printResult.errors.join("; ") : "unknown";
+    throw new Error(`Claude ${stage} call reported an error: ${details}`);
   }
 
   if (typeof printResult.structured_output === "object" && printResult.structured_output !== null) {
@@ -342,8 +267,10 @@ function renderReviewPrompt(
     "Use blocking severity when the result should not be claimed as passed.",
     "For visual or product goals, be harsh about generic layouts, weak interaction, unclear story, missing proof, unreadable mobile, or simulated evidence.",
     "If deterministic evaluations failed, include blocking findings.",
-    "Use the read-only file tools to inspect the referenced source files and screenshot paths before making visual claims.",
-    "If screenshots are missing or unreadable, return a blocking finding.",
+    "If the builder reported changes that were not observed, or vice versa (see DISCREPANCIES), treat unexplained mismatches as at least a warning.",
+    `You may use the read-only file tools, but only inside the workspace root (${context.workspaceRoot}) and the run directory (${context.runDir}).`,
+    "Do not read files larger than about 50 KB, credential files, or anything outside those directories.",
+    "If screenshots are referenced but missing or unreadable, return a blocking finding.",
     "",
     "GOAL:",
     JSON.stringify(summarizeGoal(goal), null, 2),
@@ -352,14 +279,112 @@ function renderReviewPrompt(
     JSON.stringify(plan, null, 2),
     "",
     "BUILDER:",
-    JSON.stringify(builder, null, 2),
+    JSON.stringify(
+      {
+        summary: builder.summary,
+        notes: builder.notes,
+        reportedFiles: builder.reportedFiles ?? builder.files,
+        findingResponses: builder.findingResponses ?? []
+      },
+      null,
+      2
+    ),
     "",
-      "EVALUATIONS:",
-      JSON.stringify(evaluations, null, 2),
-      "",
-      "WORKSPACE EXCERPTS:",
-      renderWorkspaceExcerpts(context)
+    "OBSERVED CHANGES:",
+    JSON.stringify(builder.observedChanges ?? [], null, 2),
+    "",
+    "DISCREPANCIES:",
+    JSON.stringify(builder.discrepancies ?? [], null, 2),
+    "",
+    "EVALUATIONS:",
+    JSON.stringify(evaluations, null, 2),
+    "",
+    "WORKSPACE EXCERPTS:",
+    renderWorkspaceExcerpts(builder, context)
   ].join("\n");
+}
+
+/**
+ * Bounded, generic review context: heads of the changed text files plus the
+ * workspace top-level listing. Secret-like files are excluded, and the total
+ * size is capped so the review prompt cannot blow past the Claude budget.
+ */
+function renderWorkspaceExcerpts(builder: BuilderResult, context: AgentContext): string {
+  const sections: string[] = [];
+  let remaining = EXCERPT_TOTAL_BYTES;
+
+  for (const file of builder.files) {
+    if (remaining <= 0) {
+      sections.push("--- (excerpt budget exhausted; inspect remaining files with Read) ---");
+      break;
+    }
+    if (!isExcerptCandidate(file)) {
+      continue;
+    }
+
+    const head = readFileHead(file, Math.min(EXCERPT_BYTES_PER_FILE, remaining));
+    if (head === undefined) {
+      continue;
+    }
+    remaining -= Buffer.byteLength(head, "utf8");
+    sections.push(`--- ${file} ---\n${head}`);
+  }
+
+  const siteCheckSummary = join(context.runDir, "site-check", "site-check-summary.json");
+  if (existsSync(siteCheckSummary)) {
+    const head = readFileHead(siteCheckSummary, EXCERPT_BYTES_PER_FILE);
+    if (head !== undefined) {
+      sections.push(`--- ${siteCheckSummary} ---\n${head}`);
+    }
+  }
+
+  sections.push(`--- workspace root listing (${context.workspaceRoot}) ---\n${listTopLevel(context.workspaceRoot)}`);
+
+  return sections.join("\n\n");
+}
+
+function isExcerptCandidate(file: string): boolean {
+  const normalized = file.replace(/\\/g, "/");
+  if (normalized.includes("/.git/") || normalized.includes("/node_modules/")) {
+    return false;
+  }
+  if (SECRET_NAME_PATTERN.test(basename(file))) {
+    return false;
+  }
+  const extension = normalized.slice(normalized.lastIndexOf("."));
+  return TEXT_EXTENSIONS.has(extension.toLowerCase());
+}
+
+function readFileHead(path: string, maxBytes: number): string | undefined {
+  let fd: number;
+  try {
+    fd = openSync(path, "r");
+  } catch {
+    return undefined;
+  }
+  try {
+    const buffer = Buffer.alloc(maxBytes);
+    const bytesRead = readSync(fd, buffer, 0, maxBytes, 0);
+    return buffer.subarray(0, bytesRead).toString("utf8");
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function listTopLevel(workspaceRoot: string): string {
+  try {
+    return readdirSync(workspaceRoot)
+      .map((name) => {
+        try {
+          return statSync(join(workspaceRoot, name)).isDirectory() ? `${name}/` : name;
+        } catch {
+          return name;
+        }
+      })
+      .join("\n");
+  } catch {
+    return "(workspace root is not readable)";
+  }
 }
 
 function summarizeGoal(goal: Goal): Omit<Goal, "rawSections"> & { loopMode?: string } {
@@ -367,10 +392,12 @@ function summarizeGoal(goal: Goal): Omit<Goal, "rawSections"> & { loopMode?: str
     objective: goal.objective,
     deliverableType: goal.deliverableType,
     targetUser: goal.targetUser,
+    workspace: goal.workspace,
     acceptanceCriteria: goal.acceptanceCriteria,
     constraints: goal.constraints,
     verificationCommands: goal.verificationCommands,
     stopConditions: goal.stopConditions,
+    manualApprovalCategories: goal.manualApprovalCategories,
     loopMode: goal.rawSections["loop mode"]
   };
 }
@@ -381,51 +408,15 @@ function assertStringArray(value: unknown, name: string): asserts value is strin
   }
 }
 
-function normalizeFinding(finding: ReviewFinding): ReviewFinding {
+function normalizeFinding(finding: RawReviewFinding, id: string): ReviewFinding {
   if (!["blocking", "warning", "suggestion"].includes(finding.severity)) {
     return {
       ...finding,
+      id,
       severity: "blocking",
       title: finding.title || "Malformed finding severity",
       suggestedAction: finding.suggestedAction || "Return a valid severity."
     };
   }
-  return finding;
-}
-
-function collectWorkspaceArtifacts(): string[] {
-  const candidateFiles = [
-    join(process.cwd(), "examples", "ai-loop-site", "index.html"),
-    join(process.cwd(), "examples", "ai-loop-site", "styles.css"),
-    join(process.cwd(), "examples", "ai-loop-site", "script.js"),
-    join(process.cwd(), "examples", "ai-loop-site", "dist", "site-bundle.js"),
-    join(process.cwd(), "examples", "ai-loop-site", "DESIGN_RESEARCH.md"),
-    join(process.cwd(), "examples", "ai-loop-site", "assets", "hero-ai-loop-abstract.png"),
-    join(process.cwd(), "examples", "ai-loop-site", "assets", "fonts", "syne-latin-wght-normal.woff2")
-  ];
-
-  return candidateFiles.filter((file) => existsSync(file));
-}
-
-function renderWorkspaceExcerpts(context: AgentContext): string {
-  const excerptFiles = [
-    join(process.cwd(), "examples", "ai-loop-site", "index.html"),
-    join(process.cwd(), "examples", "ai-loop-site", "styles.css"),
-    join(process.cwd(), "examples", "ai-loop-site", "script.js"),
-    join(process.cwd(), "examples", "ai-loop-site", "GOAL.md"),
-    join(process.cwd(), "examples", "ai-loop-site", "DESIGN_RESEARCH.md"),
-    join(context.runDir, "site-check", "site-check-summary.json")
-  ].filter((file) => existsSync(file));
-
-  const assetManifest = collectWorkspaceArtifacts()
-    .map((file) => `- ${file}`)
-    .join("\n");
-
-  return excerptFiles
-    .map((file) => {
-      const content = readFileSync(file, "utf8").slice(0, 9000);
-      return `--- ${file} ---\n${content}`;
-    })
-    .join("\n\n")
-    .concat(`\n\n--- Artifact manifest ---\n${assetManifest}`);
+  return { ...finding, id };
 }

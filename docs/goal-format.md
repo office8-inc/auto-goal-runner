@@ -31,11 +31,37 @@ web-app | game | api-system | document | video | research | custom
 
 - `Target User`
 - `Constraints`
+- `Workspace`
 - `Inputs`
 - `Reference URLs`
 - `Out of Scope`
 - `Preferred Stack`
 - `Manual Approval Required For`
+
+### Workspace
+
+The directory the deliverable lives in, relative to the goal file's directory (absolute paths also work):
+
+```md
+## Workspace
+./site
+```
+
+If omitted, the goal file's directory is the workspace. The CLI flag `--workspace <dir>` (relative to the invocation directory) overrides both. The builder, evaluators, observed-diff collection, and reviewer all operate on this one resolved directory.
+
+### Manual Approval Required For
+
+Goal-specific policy gates as fixed categories, one per line:
+
+```md
+## Manual Approval Required For
+- publish
+- deploy
+- network-write
+- destructive-filesystem
+```
+
+When a verification command matches a listed category, the run stops with `A policy-gated action is required.` instead of executing it. Unknown commands and commands containing shell operators are gated by default whenever verification commands are executed, in every mode (see `docs/architecture.md`, Policy Engine). Unknown category names are an error, so a typo cannot silently disable a gate.
 
 ## Good Goal
 

@@ -1,5 +1,8 @@
 import { spawn } from "node:child_process";
+import { killProcessTree } from "../adapters/process-utils.js";
 import type { EvaluationResult } from "../types.js";
+
+const MAX_CAPTURED_OUTPUT = 200 * 1024;
 
 export async function evaluateCommands(
   commands: string[],
@@ -24,23 +27,65 @@ export async function evaluateCommands(
 }
 
 function runCommand(command: string, cwd: string, runDir?: string): Promise<EvaluationResult> {
-  return new Promise((resolve) => {
+  return new Promise((resolveCommand) => {
     const env = { ...process.env };
     if (runDir && /\bsite:check\b/.test(command)) {
       env.SITE_CHECK_OUTPUT_DIR = `${runDir}/site-check`;
     }
 
+    const timeoutMs = Number(process.env.AUTO_GOAL_COMMAND_TIMEOUT_MS ?? "600000");
     const child = spawn(command, { cwd, shell: true, env });
-    const chunks: string[] = [];
 
-    child.stdout.on("data", (data: Buffer) => chunks.push(data.toString()));
-    child.stderr.on("data", (data: Buffer) => chunks.push(data.toString()));
+    let output = "";
+    let settled = false;
+    let timedOut = false;
+
+    const record = (data: Buffer) => {
+      output += data.toString();
+      if (output.length > MAX_CAPTURED_OUTPUT) {
+        output = output.slice(-MAX_CAPTURED_OUTPUT);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killProcessTree(child.pid);
+    }, timeoutMs);
+
+    const finish = (result: EvaluationResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolveCommand(result);
+    };
+
+    child.stdout.on("data", record);
+    child.stderr.on("data", record);
+
+    child.on("error", (error) => {
+      finish({
+        name: `command:${command}`,
+        status: "fail",
+        summary: `Command could not be started: ${command} (${error.message})`,
+        details: output.slice(-4000)
+      });
+    });
+
     child.on("close", (code) => {
-      resolve({
+      if (timedOut) {
+        finish({
+          name: `command:${command}`,
+          status: "fail",
+          summary: `Command timed out after ${timeoutMs}ms: ${command}`,
+          details: output.slice(-4000)
+        });
+        return;
+      }
+      finish({
         name: `command:${command}`,
         status: code === 0 ? "pass" : "fail",
         summary: code === 0 ? `Command passed: ${command}` : `Command failed with exit code ${code}: ${command}`,
-        details: chunks.join("").slice(-4000)
+        details: output.slice(-4000)
       });
     });
   });

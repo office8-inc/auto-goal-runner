@@ -1,5 +1,6 @@
 import type {
   BuilderResult,
+  CodexSandboxMode,
   EvaluationResult,
   Goal,
   PlanResult,
@@ -8,9 +9,12 @@ import type {
 
 export type AgentContext = {
   runDir: string;
+  workspaceRoot: string;
   iteration: number;
+  codexSandbox: CodexSandboxMode;
   previousEvaluations: EvaluationResult[];
   previousReview?: ReviewResult;
+  previousBuilder?: BuilderResult;
 };
 
 export interface AgentAdapter {
@@ -24,4 +28,3 @@ export interface AgentAdapter {
     context: AgentContext
   ): Promise<ReviewResult>;
 }
-

@@ -72,10 +72,12 @@ export class SimulatedAgentAdapter implements AgentAdapter {
     goal: Goal,
     _plan: PlanResult,
     builder: BuilderResult,
-    evaluations: EvaluationResult[]
+    evaluations: EvaluationResult[],
+    context: AgentContext
   ): Promise<ReviewResult> {
     const failing = evaluations.filter((result) => result.status === "fail");
-    const findings: ReviewFinding[] = failing.map((result) => ({
+    const findings: ReviewFinding[] = failing.map((result, index) => ({
+      id: `f${context.iteration}-${index + 1}`,
       severity: "blocking",
       title: `Evaluator failed: ${result.name}`,
       detail: result.summary,
@@ -83,6 +85,7 @@ export class SimulatedAgentAdapter implements AgentAdapter {
     }));
 
     findings.push({
+      id: `f${context.iteration}-${findings.length + 1}`,
       severity: "suggestion",
       title: "Make the next loop more measurable",
       detail: `The build created ${builder.files.length} file(s). Future runs should attach stronger domain-specific evaluators for ${goal.deliverableType}.`,
