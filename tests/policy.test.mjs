@@ -113,3 +113,11 @@ test("build-mode flags like --release are not mistaken for outward actions", () 
     assert.equal(check.decision, "allow", `${command} should be allowed (${check.rule})`);
   }
 });
+
+test("outward-action flags are still gated; only --release is exempt", () => {
+  for (const command of ["node verify.js --publish", "npm run build -- --deploy"]) {
+    const check = checkCommandPolicy(command, baseGoal);
+    assert.notEqual(check.decision, "allow", `${command} must not be allowed (${check.rule})`);
+  }
+  assert.equal(checkCommandPolicy("cargo build --release", baseGoal).decision, "allow");
+});

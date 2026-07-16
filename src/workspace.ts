@@ -47,7 +47,14 @@ export function captureWorkspaceSnapshot(
 ): WorkspaceSnapshot {
   const entries = new Map<string, { mtimeMs: number; size: number }>();
   const unreadableDirs: string[] = [];
-  const excluded = new Set(excludePaths.map(canonicalizeForCompare));
+  // 除外リスト側は resolve 形と realpath 形の両方を登録する。walk 中のエントリ側は
+  // ファイルシステムへ触れない resolve のみで比較する（realpath は symlink 先へ
+  // アクセスするため、lstat で判定する前に外部ターゲットを踏んでしまう）。
+  const excluded = new Set<string>();
+  for (const path of excludePaths) {
+    excluded.add(normalizeCase(resolve(path)));
+    excluded.add(canonicalizeForCompare(path));
+  }
   let truncated = false;
 
   const walk = (dir: string) => {
@@ -70,7 +77,7 @@ export function captureWorkspaceSnapshot(
       }
 
       const fullPath = join(dir, name);
-      if (excluded.size > 0 && excluded.has(canonicalizeForCompare(fullPath))) {
+      if (excluded.size > 0 && excluded.has(normalizeCase(resolve(fullPath)))) {
         continue;
       }
 
@@ -271,7 +278,11 @@ function canonicalizeForCompare(path: string): string {
   } catch {
     canonical = resolve(path);
   }
-  return process.platform === "win32" ? canonical.toLowerCase() : canonical;
+  return normalizeCase(canonical);
+}
+
+function normalizeCase(path: string): string {
+  return process.platform === "win32" ? path.toLowerCase() : path;
 }
 
 export function isPathInside(parent: string, child: string): boolean {

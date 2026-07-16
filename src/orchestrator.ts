@@ -112,11 +112,12 @@ export async function runGoal(options: RunOptions): Promise<RunResult> {
 
     // 現在の runDir だけでなく runs/ 全体を除外する: 過去の run の蓄積で
     // スナップショット上限に達したり、並行 run の書き込みを builder の変更と
-    // 誤認したりしないようにする
+    // 誤認したりしないようにする。runDir も渡すのは、workspace が runs/ 自体を
+    // 指す場合に walker が開始ルートを除外できないため。
     const runsRoot = resolve(options.cwd, "runs");
-    const beforeSnapshot = captureWorkspaceSnapshot(workspaceRoot, [runsRoot]);
+    const beforeSnapshot = captureWorkspaceSnapshot(workspaceRoot, [runsRoot, runDir]);
     const rawBuilder = await adapter.build(goal, plan, context);
-    const afterSnapshot = captureWorkspaceSnapshot(workspaceRoot, [runsRoot]);
+    const afterSnapshot = captureWorkspaceSnapshot(workspaceRoot, [runsRoot, runDir]);
 
     const observation = reconcileChanges({
       workspaceRoot,

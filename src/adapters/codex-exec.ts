@@ -196,7 +196,9 @@ export function resolveCodexCommand(): { command: string; baseArgs: string[]; vi
 }
 
 function findOnWindowsPath(fileName: string): string | undefined {
-  for (const dir of (process.env.PATH ?? "").split(";")) {
+  for (const rawDir of (process.env.PATH ?? "").split(";")) {
+    // PATH の要素は '"C:\Program Files\tools"' のように引用符付きのことがある
+    const dir = rawDir.replace(/^"|"$/g, "");
     if (!dir) {
       continue;
     }
