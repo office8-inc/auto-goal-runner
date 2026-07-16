@@ -3,6 +3,37 @@ import { createWriteStream } from "node:fs";
 
 const DEFAULT_MAX_BUFFER_BYTES = 1024 * 1024;
 
+/**
+ * detached で起動した子はランナーが死んでも生き残るため、SIGINT/SIGTERM 時に
+ * 実行中の子プロセスツリーをまとめて始末してから終了する。
+ */
+const activeChildPids = new Set<number>();
+let signalHandlersInstalled = false;
+
+export function trackChild(pid: number | undefined): void {
+  if (pid === undefined) {
+    return;
+  }
+  activeChildPids.add(pid);
+  if (!signalHandlersInstalled) {
+    signalHandlersInstalled = true;
+    for (const signal of ["SIGINT", "SIGTERM"] as const) {
+      process.on(signal, () => {
+        for (const childPid of activeChildPids) {
+          killProcessTree(childPid);
+        }
+        process.exit(signal === "SIGINT" ? 130 : 143);
+      });
+    }
+  }
+}
+
+export function untrackChild(pid: number | undefined): void {
+  if (pid !== undefined) {
+    activeChildPids.delete(pid);
+  }
+}
+
 export type ProcessResult = {
   exitCode: number;
   timedOut: boolean;
@@ -59,6 +90,7 @@ export function runProcess(
       // POSIX ではプロセスグループを分離し、タイムアウト時にグループごと殺せるようにする
       detached: process.platform !== "win32"
     });
+    trackChild(child.pid);
 
     const stdoutTail = new TailBuffer(maxBytes);
     const stderrTail = new TailBuffer(maxBytes);
@@ -79,6 +111,7 @@ export function runProcess(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      untrackChild(child.pid);
       const complete = () => {
         if (streamError) {
           rejectProcess(
@@ -114,6 +147,7 @@ export function runProcess(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      untrackChild(child.pid);
       stdoutStream?.end();
       rejectProcess(error);
     });

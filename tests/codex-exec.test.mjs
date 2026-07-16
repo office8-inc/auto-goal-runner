@@ -104,3 +104,9 @@ test("renderBuildPrompt includes repair context on later iterations", () => {
   assert.ok(repairPrompt.includes("PREVIOUS FAILED EVALUATIONS"));
   assert.ok(repairPrompt.includes("PREVIOUS OBSERVED CHANGES"));
 });
+
+test("assertCmdShimSafeArgs rejects cmd metacharacters and accepts plain paths", async () => {
+  const { assertCmdShimSafeArgs } = await import("../dist/adapters/codex-exec.js");
+  assert.throws(() => assertCmdShimSafeArgs(["-C", "C:\work\R&D"]), /metacharacters/);
+  assert.doesNotThrow(() => assertCmdShimSafeArgs(["-C", "C:\work\plain-path", "--json"]));
+});

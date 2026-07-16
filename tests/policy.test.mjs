@@ -106,3 +106,10 @@ test("outward action-named scripts are not allowed by generic rules", () => {
   // 通常のスクリプト名は引き続き allow
   assert.equal(checkCommandPolicy("npm run site:check", baseGoal).decision, "allow");
 });
+
+test("build-mode flags like --release are not mistaken for outward actions", () => {
+  for (const command of ["cargo build --release", "cargo test --release"]) {
+    const check = checkCommandPolicy(command, baseGoal);
+    assert.equal(check.decision, "allow", `${command} should be allowed (${check.rule})`);
+  }
+});

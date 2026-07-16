@@ -36,13 +36,23 @@ export async function runGoal(options: RunOptions): Promise<RunResult> {
   const runDir = resolve(options.cwd, "runs", runId);
   await mkdir(runDir, { recursive: true });
 
+  const codexSandbox = options.codexSandbox ?? "workspace-write";
   const warnings: string[] = [];
-  if (isPathInside(workspaceRoot, runDir)) {
-    warnings.push(
-      "The run directory is inside the builder-writable workspace, so run artifacts are not tamper-proof. " +
-        "Point --workspace (or ## Workspace) at a directory that does not contain runs/ to separate the ledger."
-    );
-    console.warn(`Warning: ${warnings[0]}`);
+  if (options.mode === "external") {
+    if (isPathInside(workspaceRoot, runDir)) {
+      warnings.push(
+        "The run directory is inside the builder-writable workspace, so run artifacts are not tamper-proof. " +
+          "Point --workspace (or ## Workspace) at a directory that does not contain runs/ to separate the ledger."
+      );
+    } else if (codexSandbox !== "workspace-write") {
+      warnings.push(
+        `Codex runs with the "${codexSandbox}" sandbox, which is not confined to the workspace, ` +
+          "so run artifacts are not tamper-proof in this mode."
+      );
+    }
+    for (const warning of warnings) {
+      console.warn(`Warning: ${warning}`);
+    }
   }
 
   await writeJson(join(runDir, "normalized-goal.json"), goal);
@@ -74,7 +84,7 @@ export async function runGoal(options: RunOptions): Promise<RunResult> {
     runDir,
     workspaceRoot,
     iteration: 0,
-    codexSandbox: options.codexSandbox ?? "workspace-write",
+    codexSandbox,
     previousEvaluations: []
   };
 
@@ -100,9 +110,13 @@ export async function runGoal(options: RunOptions): Promise<RunResult> {
       previousBuilder
     };
 
-    const beforeSnapshot = captureWorkspaceSnapshot(workspaceRoot, [runDir]);
+    // 現在の runDir だけでなく runs/ 全体を除外する: 過去の run の蓄積で
+    // スナップショット上限に達したり、並行 run の書き込みを builder の変更と
+    // 誤認したりしないようにする
+    const runsRoot = resolve(options.cwd, "runs");
+    const beforeSnapshot = captureWorkspaceSnapshot(workspaceRoot, [runsRoot]);
     const rawBuilder = await adapter.build(goal, plan, context);
-    const afterSnapshot = captureWorkspaceSnapshot(workspaceRoot, [runDir]);
+    const afterSnapshot = captureWorkspaceSnapshot(workspaceRoot, [runsRoot]);
 
     const observation = reconcileChanges({
       workspaceRoot,

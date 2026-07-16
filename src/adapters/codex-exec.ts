@@ -56,17 +56,18 @@ export async function runCodexBuild(
   await writeFile(promptPath, prompt, "utf8");
   await writeFile(schemaPath, `${JSON.stringify(BUILD_OUTPUT_SCHEMA, null, 2)}\n`, "utf8");
 
-  const { command, baseArgs } = resolveCodexCommand();
-  const args = [
-    ...baseArgs,
-    ...buildCodexArgs({
-      workspaceRoot: context.workspaceRoot,
-      sandbox: context.codexSandbox,
-      schemaPath,
-      lastMessagePath,
-      model: process.env.AUTO_GOAL_CODEX_MODEL
-    })
-  ];
+  const { command, baseArgs, viaCmdShim } = resolveCodexCommand();
+  const codexArgs = buildCodexArgs({
+    workspaceRoot: context.workspaceRoot,
+    sandbox: context.codexSandbox,
+    schemaPath,
+    lastMessagePath,
+    model: process.env.AUTO_GOAL_CODEX_MODEL
+  });
+  if (viaCmdShim) {
+    assertCmdShimSafeArgs(codexArgs);
+  }
+  const args = [...baseArgs, ...codexArgs];
 
   const timeoutMs = Number(process.env.AUTO_GOAL_CODEX_TIMEOUT_MS ?? "1200000");
   const startedAt = Date.now();
@@ -160,26 +161,67 @@ function sandboxArgs(mode: CodexSandboxMode): string[] {
   }
 }
 
-export function resolveCodexCommand(): { command: string; baseArgs: string[] } {
+export function resolveCodexCommand(): { command: string; baseArgs: string[]; viaCmdShim: boolean } {
   const configured = process.env.AUTO_GOAL_CODEX_COMMAND;
   if (configured) {
-    return { command: configured, baseArgs: [] };
+    return { command: configured, baseArgs: [], viaCmdShim: false };
   }
 
   if (process.platform === "win32") {
     const found = findWindowsCodexExe();
     if (found) {
-      return { command: found, baseArgs: [] };
+      return { command: found, baseArgs: [], viaCmdShim: false };
     }
+
+    // PATH 上の実行ファイルを直接探す（shell:false では PATHEXT 解決が働かないため自前で）
+    const onPath = findOnWindowsPath("codex.exe");
+    if (onPath) {
+      return { command: onPath, baseArgs: [], viaCmdShim: false };
+    }
+
     // npm グローバルインストールは codex.cmd シムなので shell:false では直接
-    // 起動できない。Claude アダプタと同様に cmd.exe 経由で起動する。
-    return {
-      command: process.env.ComSpec ?? "cmd.exe",
-      baseArgs: ["/d", "/s", "/c", "codex.cmd"]
-    };
+    // 起動できない。cmd.exe 経由で起動する（引数は呼び出し側で検証する）。
+    if (findOnWindowsPath("codex.cmd")) {
+      return {
+        command: process.env.ComSpec ?? "cmd.exe",
+        baseArgs: ["/d", "/s", "/c", "codex.cmd"],
+        viaCmdShim: true
+      };
+    }
+
+    return { command: "codex", baseArgs: [], viaCmdShim: false };
   }
 
-  return { command: "codex", baseArgs: [] };
+  return { command: "codex", baseArgs: [], viaCmdShim: false };
+}
+
+function findOnWindowsPath(fileName: string): string | undefined {
+  for (const dir of (process.env.PATH ?? "").split(";")) {
+    if (!dir) {
+      continue;
+    }
+    const candidate = join(dir, fileName);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * cmd.exe はシム経由の引数を再パースするため、メタ文字を含むパスは安全に渡せない。
+ * エスケープ仕様が複雑で完全対応は現実的でないので、検出したら正直に失敗させる。
+ */
+export function assertCmdShimSafeArgs(args: string[]): void {
+  const cmdMetacharacters = /[&|<>^%!"]/;
+  for (const arg of args) {
+    if (cmdMetacharacters.test(arg)) {
+      throw new Error(
+        `Cannot pass "${arg}" through the codex.cmd shim: it contains cmd.exe metacharacters. ` +
+          "Set AUTO_GOAL_CODEX_COMMAND to the codex executable's full path, or move the workspace to a plain path."
+      );
+    }
+  }
 }
 
 /**

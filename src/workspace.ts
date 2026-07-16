@@ -1,4 +1,4 @@
-import { lstatSync, readdirSync, statSync } from "node:fs";
+import { lstatSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { BuilderResult, FindingResponse, Goal, ObservedChange, RunOptions } from "./types.js";
 
@@ -47,7 +47,7 @@ export function captureWorkspaceSnapshot(
 ): WorkspaceSnapshot {
   const entries = new Map<string, { mtimeMs: number; size: number }>();
   const unreadableDirs: string[] = [];
-  const excluded = excludePaths.map((path) => resolve(path));
+  const excluded = new Set(excludePaths.map(canonicalizeForCompare));
   let truncated = false;
 
   const walk = (dir: string) => {
@@ -70,7 +70,7 @@ export function captureWorkspaceSnapshot(
       }
 
       const fullPath = join(dir, name);
-      if (excluded.some((path) => path === resolve(fullPath))) {
+      if (excluded.size > 0 && excluded.has(canonicalizeForCompare(fullPath))) {
         continue;
       }
 
@@ -258,6 +258,20 @@ export function normalizeFindingResponses(value: unknown): FindingResponse[] {
 
 function toWorkspaceRelative(workspaceRoot: string, absolutePath: string): string {
   return relative(workspaceRoot, absolutePath).split(sep).join("/");
+}
+
+/**
+ * 除外パス比較用の正規化: symlink/短パスエイリアスは realpath で解決し、
+ * Windows では大文字小文字を無視する。
+ */
+function canonicalizeForCompare(path: string): string {
+  let canonical: string;
+  try {
+    canonical = realpathSync(path);
+  } catch {
+    canonical = resolve(path);
+  }
+  return process.platform === "win32" ? canonical.toLowerCase() : canonical;
 }
 
 export function isPathInside(parent: string, child: string): boolean {

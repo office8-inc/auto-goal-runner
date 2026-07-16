@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { killProcessTree } from "../adapters/process-utils.js";
+import { killProcessTree, trackChild, untrackChild } from "../adapters/process-utils.js";
 import type { EvaluationResult } from "../types.js";
 
 const MAX_CAPTURED_OUTPUT = 200 * 1024;
@@ -40,6 +40,7 @@ function runCommand(command: string, cwd: string, runDir?: string): Promise<Eval
       env,
       detached: process.platform !== "win32"
     });
+    trackChild(child.pid);
 
     let output = "";
     let settled = false;
@@ -61,6 +62,7 @@ function runCommand(command: string, cwd: string, runDir?: string): Promise<Eval
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      untrackChild(child.pid);
       resolveCommand(result);
     };
 
