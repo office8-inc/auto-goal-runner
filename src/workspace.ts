@@ -1,8 +1,8 @@
-import { readdirSync, statSync } from "node:fs";
+import { lstatSync, readdirSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { BuilderResult, FindingResponse, Goal, ObservedChange, RunOptions } from "./types.js";
 
-const EXCLUDED_DIR_NAMES = new Set([".git", "node_modules", "runs"]);
+const EXCLUDED_DIR_NAMES = new Set([".git", "node_modules"]);
 const MAX_SNAPSHOT_ENTRIES = 20000;
 
 export type WorkspaceSnapshot = {
@@ -41,9 +41,13 @@ export function resolveWorkspaceRoot(goal: Goal, options: RunOptions): string {
   return candidate;
 }
 
-export function captureWorkspaceSnapshot(workspaceRoot: string): WorkspaceSnapshot {
+export function captureWorkspaceSnapshot(
+  workspaceRoot: string,
+  excludePaths: string[] = []
+): WorkspaceSnapshot {
   const entries = new Map<string, { mtimeMs: number; size: number }>();
   const unreadableDirs: string[] = [];
+  const excluded = excludePaths.map((path) => resolve(path));
   let truncated = false;
 
   const walk = (dir: string) => {
@@ -66,10 +70,18 @@ export function captureWorkspaceSnapshot(workspaceRoot: string): WorkspaceSnapsh
       }
 
       const fullPath = join(dir, name);
+      if (excluded.some((path) => path === resolve(fullPath))) {
+        continue;
+      }
+
+      // symlink / junction は辿らない: workspace 外への脱出や循環を防ぐ
       let stats;
       try {
-        stats = statSync(fullPath);
+        stats = lstatSync(fullPath);
       } catch {
+        continue;
+      }
+      if (stats.isSymbolicLink()) {
         continue;
       }
 
@@ -246,6 +258,10 @@ export function normalizeFindingResponses(value: unknown): FindingResponse[] {
 
 function toWorkspaceRelative(workspaceRoot: string, absolutePath: string): string {
   return relative(workspaceRoot, absolutePath).split(sep).join("/");
+}
+
+export function isPathInside(parent: string, child: string): boolean {
+  return isInside(parent, child);
 }
 
 function isInside(parent: string, child: string): boolean {

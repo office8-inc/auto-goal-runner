@@ -54,6 +54,8 @@ const ALLOW_RULES: PatternRule[] = [
  */
 const SHELL_METACHARACTERS = /[;&|`$<>\n\r]/;
 
+const OUTWARD_ACTION_NAMES = /\b(deploy|publish|release|upload|ship)\b/i;
+
 export function checkCommandPolicy(command: string, goal: Goal): PolicyCheck {
   assertKnownCategories(goal.manualApprovalCategories);
   const trimmed = command.trim();
@@ -73,6 +75,12 @@ export function checkCommandPolicy(command: string, goal: Goal): PolicyCheck {
 
   if (SHELL_METACHARACTERS.test(trimmed)) {
     return { command, decision: "requiresApproval", rule: "default-deny:shell-metacharacters" };
+  }
+
+  // "npm run deploy" や "node publish.js" のような外向きアクション名のスクリプトが
+  // 汎用 allow ルールを通過しないよう、名前ベースで承認を要求する。
+  if (OUTWARD_ACTION_NAMES.test(trimmed)) {
+    return { command, decision: "requiresApproval", rule: "default-deny:outward-action-name" };
   }
 
   for (const { pattern, rule } of ALLOW_RULES) {

@@ -34,7 +34,12 @@ function runCommand(command: string, cwd: string, runDir?: string): Promise<Eval
     }
 
     const timeoutMs = Number(process.env.AUTO_GOAL_COMMAND_TIMEOUT_MS ?? "600000");
-    const child = spawn(command, { cwd, shell: true, env });
+    const child = spawn(command, {
+      cwd,
+      shell: true,
+      env,
+      detached: process.platform !== "win32"
+    });
 
     let output = "";
     let settled = false;

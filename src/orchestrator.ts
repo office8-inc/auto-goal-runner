@@ -11,6 +11,7 @@ import {
   applyObservation,
   captureWorkspaceSnapshot,
   diffWorkspaceSnapshots,
+  isPathInside,
   reconcileChanges,
   resolveWorkspaceRoot
 } from "./workspace.js";
@@ -35,6 +36,15 @@ export async function runGoal(options: RunOptions): Promise<RunResult> {
   const runDir = resolve(options.cwd, "runs", runId);
   await mkdir(runDir, { recursive: true });
 
+  const warnings: string[] = [];
+  if (isPathInside(workspaceRoot, runDir)) {
+    warnings.push(
+      "The run directory is inside the builder-writable workspace, so run artifacts are not tamper-proof. " +
+        "Point --workspace (or ## Workspace) at a directory that does not contain runs/ to separate the ledger."
+    );
+    console.warn(`Warning: ${warnings[0]}`);
+  }
+
   await writeJson(join(runDir, "normalized-goal.json"), goal);
 
   const policyChecks = checkCommandPolicies(goal.verificationCommands, goal);
@@ -51,6 +61,7 @@ export async function runGoal(options: RunOptions): Promise<RunResult> {
         .map((check) => `"${check.command}" (${check.rule})`)
         .join(", ")}`,
       workspaceRoot,
+      warnings,
       policyChecks,
       goal,
       plan: { summary: "Run stopped by the command policy before planning.", steps: [], risks: [] },
@@ -89,9 +100,9 @@ export async function runGoal(options: RunOptions): Promise<RunResult> {
       previousBuilder
     };
 
-    const beforeSnapshot = captureWorkspaceSnapshot(workspaceRoot);
+    const beforeSnapshot = captureWorkspaceSnapshot(workspaceRoot, [runDir]);
     const rawBuilder = await adapter.build(goal, plan, context);
-    const afterSnapshot = captureWorkspaceSnapshot(workspaceRoot);
+    const afterSnapshot = captureWorkspaceSnapshot(workspaceRoot, [runDir]);
 
     const observation = reconcileChanges({
       workspaceRoot,
@@ -152,6 +163,7 @@ export async function runGoal(options: RunOptions): Promise<RunResult> {
     status,
     stopReason,
     workspaceRoot,
+    warnings,
     policyChecks,
     goal,
     plan,
@@ -237,6 +249,9 @@ function renderFinalReport(result: RunResult): string {
     `Status: ${result.status}`,
     `Stop reason: ${result.stopReason}`,
     `Workspace: ${result.workspaceRoot}`,
+    ...(result.warnings.length > 0
+      ? ["", "## Warnings", ...result.warnings.map((warning) => `- ${warning}`)]
+      : []),
     "",
     "## Objective",
     "",

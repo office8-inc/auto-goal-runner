@@ -56,14 +56,17 @@ export async function runCodexBuild(
   await writeFile(promptPath, prompt, "utf8");
   await writeFile(schemaPath, `${JSON.stringify(BUILD_OUTPUT_SCHEMA, null, 2)}\n`, "utf8");
 
-  const command = resolveCodexCommand();
-  const args = buildCodexArgs({
-    workspaceRoot: context.workspaceRoot,
-    sandbox: context.codexSandbox,
-    schemaPath,
-    lastMessagePath,
-    model: process.env.AUTO_GOAL_CODEX_MODEL
-  });
+  const { command, baseArgs } = resolveCodexCommand();
+  const args = [
+    ...baseArgs,
+    ...buildCodexArgs({
+      workspaceRoot: context.workspaceRoot,
+      sandbox: context.codexSandbox,
+      schemaPath,
+      lastMessagePath,
+      model: process.env.AUTO_GOAL_CODEX_MODEL
+    })
+  ];
 
   const timeoutMs = Number(process.env.AUTO_GOAL_CODEX_TIMEOUT_MS ?? "1200000");
   const startedAt = Date.now();
@@ -157,20 +160,26 @@ function sandboxArgs(mode: CodexSandboxMode): string[] {
   }
 }
 
-export function resolveCodexCommand(): string {
+export function resolveCodexCommand(): { command: string; baseArgs: string[] } {
   const configured = process.env.AUTO_GOAL_CODEX_COMMAND;
   if (configured) {
-    return configured;
+    return { command: configured, baseArgs: [] };
   }
 
   if (process.platform === "win32") {
     const found = findWindowsCodexExe();
     if (found) {
-      return found;
+      return { command: found, baseArgs: [] };
     }
+    // npm グローバルインストールは codex.cmd シムなので shell:false では直接
+    // 起動できない。Claude アダプタと同様に cmd.exe 経由で起動する。
+    return {
+      command: process.env.ComSpec ?? "cmd.exe",
+      baseArgs: ["/d", "/s", "/c", "codex.cmd"]
+    };
   }
 
-  return "codex";
+  return { command: "codex", baseArgs: [] };
 }
 
 /**

@@ -140,7 +140,11 @@ async function runClaudeJson<T>(
     "--tools",
     options.tools.join(","),
     "--max-budget-usd",
-    process.env.AUTO_GOAL_CLAUDE_MAX_BUDGET_USD ?? "2.50"
+    process.env.AUTO_GOAL_CLAUDE_MAX_BUDGET_USD ?? "2.50",
+    // レビュー証跡（スクリーンショット等）は runDir にあり、cwd（workspace）の外に
+    // なり得るため、明示的にツールアクセスを許可する
+    "--add-dir",
+    context.runDir
   ];
 
   const { command, args } = createClaudeCommand(claudeArgs);

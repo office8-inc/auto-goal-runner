@@ -55,7 +55,9 @@ export function runProcess(
     const child = spawn(command, args, {
       cwd: options.cwd,
       shell: false,
-      stdio: ["pipe", "pipe", "pipe"]
+      stdio: ["pipe", "pipe", "pipe"],
+      // POSIX ではプロセスグループを分離し、タイムアウト時にグループごと殺せるようにする
+      detached: process.platform !== "win32"
     });
 
     const stdoutTail = new TailBuffer(maxBytes);
@@ -128,7 +130,10 @@ export function runProcess(
   });
 }
 
-/** Windows needs taskkill /T to reach grandchildren; SIGTERM only hits the direct child. */
+/**
+ * Windows needs taskkill /T to reach grandchildren; POSIX needs the process
+ * group (negative pid) because tests/browsers spawn their own descendants.
+ */
 export function killProcessTree(pid: number | undefined): void {
   if (pid === undefined) {
     return;
@@ -139,9 +144,13 @@ export function killProcessTree(pid: number | undefined): void {
     });
   } else {
     try {
-      process.kill(pid, "SIGKILL");
+      process.kill(-pid, "SIGKILL");
     } catch {
-      /* the child may already be gone */
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        /* the child may already be gone */
+      }
     }
   }
 }

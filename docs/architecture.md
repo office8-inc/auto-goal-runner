@@ -161,10 +161,11 @@ The current version supports:
 
 Known limitations (accepted for the prototype, recorded here so they are not mistaken for guarantees):
 
-- The filesystem snapshot diff uses mtime + size with bounded file counts, not content hashes.
+- The filesystem snapshot diff uses mtime + size with bounded file counts, not content hashes. Symlinks and junctions are neither followed nor recorded.
 - Child processes (Claude CLI, Codex CLI) inherit the runner's environment. Do not run goals in an environment holding credentials you would not hand to those tools.
-- The Claude review step has `Read`/`LS` tools without a path allowlist; excerpts are curated and secret-like paths are excluded, but the reviewer could read other local files if prompted to. Treat review prompts as trusted input.
+- The Claude review step has `Read`/`Glob` tools without a path allowlist; excerpts are curated and secret-like paths are excluded, but the reviewer could read other local files if prompted to. Treat review prompts as trusted input.
 - The repeated-failure stop condition compares evaluator names only, not failure fingerprints; a run that is improving can still be stopped. Tune `--max-iterations` for longer repair loops.
+- When the run directory sits inside the builder-writable workspace (the default single-directory layout), the builder could tamper with run artifacts. The runner warns and records this in the final report; separate `--workspace` from the runner directory when the ledger must be trustworthy.
 
 Next work:
 

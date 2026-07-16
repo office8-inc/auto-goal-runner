@@ -94,6 +94,7 @@ export type RunResult = {
   status: RunStatus;
   stopReason: string;
   workspaceRoot: string;
+  warnings: string[];
   policyChecks: PolicyCheck[];
   goal: Goal;
   plan: PlanResult;

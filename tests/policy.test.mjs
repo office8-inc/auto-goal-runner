@@ -47,11 +47,15 @@ test("destructive and outward-facing commands are denied", () => {
 });
 
 test("unknown commands require approval (default-deny)", () => {
-  for (const command of ["make deploy-prep", "./custom-script.sh", "powershell -File build.ps1"]) {
+  for (const command of ["make prep", "./custom-script.sh", "powershell -File build.ps1"]) {
     const check = checkCommandPolicy(command, baseGoal);
     assert.equal(check.decision, "requiresApproval", `${command} should require approval`);
     assert.equal(check.rule, "default-deny:unknown-command");
   }
+  // アクション名を含む未知コマンドは outward-action ルールで先に gate される
+  const deploy = checkCommandPolicy("make deploy-prep", baseGoal);
+  assert.equal(deploy.decision, "requiresApproval");
+  assert.equal(deploy.rule, "default-deny:outward-action-name");
 });
 
 test("goal manual-approval categories gate matching commands", () => {
@@ -92,4 +96,13 @@ test("unknown manual-approval categories fail loudly", () => {
   const goal = { ...baseGoal, manualApprovalCategories: ["netwrok-write"] };
   assert.throws(() => checkCommandPolicy("npm test", goal), /Unknown manual-approval category/);
   assert.throws(() => checkCommandPolicies(["npm test"], goal), /Unknown manual-approval category/);
+});
+
+test("outward action-named scripts are not allowed by generic rules", () => {
+  for (const command of ["npm run deploy", "npm run publish:pages", "node deploy.js", "npm run release"]) {
+    const check = checkCommandPolicy(command, baseGoal);
+    assert.notEqual(check.decision, "allow", `${command} must not be allowed (${check.rule})`);
+  }
+  // 通常のスクリプト名は引き続き allow
+  assert.equal(checkCommandPolicy("npm run site:check", baseGoal).decision, "allow");
 });
